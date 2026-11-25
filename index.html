@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live2D ビューア</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<script type="importmap">{"imports":{"@piper-plus/g2p":"https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/src/index.js"}}</script>
+<style>
+/* VOICE: 手になじむ制作ツール。軽やかで、でも道具として正確に。
+   IDEA: アニメ制作スタジオのライトボックス — 光る舞台にキャラが立ち、横に調整卓。
+   PICTURE: 画面の大半を占める舞台キャンバス。読み込み前は大きなドロップ枠。
+   COLOUR and TYPE: 紙白 #fbf7f2 と墨 #1d1630、アクセントは珊瑚 #ff5d73、補助にミント。Zen Maru Gothic。
+   LAYOUT: 左に舞台、右に調整卓（タブ）。600px未満では 舞台→卓 の縦積み。 */
+:root{color-scheme:light dark;
+ --bg:light-dark(#fbf7f2,#17121f);--ink:light-dark(#1d1630,#f3eef8);--mute:light-dark(#6d6480,#a99fbb);
+ --panel:light-dark(#ffffff,#211a2d);--line:light-dark(#e8e0d6,#352b45);--acc:#ff5d73;--acc2:light-dark(#178f82,#45cdbd);
+ --chip:light-dark(#f4eee6,#2b2238)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Zen Maru Gothic",system-ui,sans-serif;overflow-x:clip}
+header{display:flex;align-items:center;gap:12px;padding:14px max(2vw,16px);flex-wrap:wrap}
+h1{font-size:24px;line-height:1.05;margin:0;font-weight:900;letter-spacing:.01em}
+h1 b{color:var(--acc)}
+header .sub{color:var(--mute);font-size:14px}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;padding:0 max(2vw,16px) 16px;height:calc(100dvh - 62px);min-height:560px}
+.stage{position:relative;border-radius:22px;overflow:hidden;background:var(--sbg,#2a2140);box-shadow:inset 0 0 0 1px rgba(255,255,255,.06),0 14px 40px -18px rgba(29,22,48,.55)}
+.stage.checker{background:repeating-conic-gradient(#cfc8d8 0 25%,#f3f0f6 0 50%) 0 0/22px 22px}
+.stage.spot::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 55% 60% at 50% 62%,rgba(255,255,255,.22),transparent 70%);pointer-events:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.bgimg{position:absolute;inset:0;background-size:cover;background-position:center}
+.drop{position:absolute;inset:18px;border:2px dashed rgba(255,255,255,.4);border-radius:18px;display:grid;place-content:center;text-align:center;color:#fff;padding:24px;gap:14px;z-index:2}
+.drop.hide{display:none}
+.drop .big{font-size:clamp(26px,3.4vw,40px);font-weight:900;line-height:1.1;text-wrap:balance}
+.drop p{margin:0;opacity:.85;font-size:15px}
+.drop svg{width:120px;height:120px;margin:0 auto}
+.stage.over .drop{display:grid;border-color:var(--acc);background:rgba(255,93,115,.15)}
+.hud{position:absolute;left:14px;bottom:12px;right:14px;display:flex;gap:8px;flex-wrap:wrap;z-index:3;pointer-events:none}
+.hud span{background:rgba(20,14,32,.6);color:#fff;font-size:13px;padding:4px 10px;border-radius:99px;backdrop-filter:blur(6px)}
+.pipbtn{position:absolute;top:12px;right:12px;z-index:3;display:none;align-items:center;gap:6px;border:0;border-radius:99px;padding:8px 14px;min-height:44px;font:inherit;font-size:14px;font-weight:700;color:#fff;background:rgba(20,14,32,.6);backdrop-filter:blur(6px);cursor:pointer}
+.pipbtn.on{display:inline-flex}.pipbtn svg{width:20px;height:20px}
+.stage.pipping::after{content:"小窓で表示中";position:absolute;inset:0;display:grid;place-content:center;color:#fff;font-weight:700;background:rgba(20,14,32,.55);z-index:2;pointer-events:none}
+#pipv{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;pointer-events:none}
+.cap{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);width:min(92%,720px);z-index:3;text-align:center;pointer-events:none;display:none}
+.cap.on{display:block}
+.cap span{display:inline;background:rgba(20,14,32,.78);color:#fff;font-size:clamp(17px,2.2vw,22px);font-weight:700;line-height:1.7;padding:4px 12px;border-radius:10px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+textarea{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical;min-height:84px;margin-bottom:10px}
+select.sel{width:100%;font:inherit;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.seg label{display:block;border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer;background:var(--chip);font-size:14px;line-height:1.35}
+.seg label b{display:block;font-size:15px}
+.seg label small{color:var(--mute)}
+.seg input{position:absolute;opacity:0}
+.seg label:has(input:checked){border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.seg label:has(input:focus-visible){outline:3px solid var(--acc2);outline-offset:2px}
+.prog{height:8px;border-radius:99px;background:var(--chip);overflow:hidden;margin:6px 0 4px;display:none}
+.prog.on{display:block}.prog i{display:block;height:100%;width:0;background:var(--acc2);transition:width .2s}
+.log{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.log div{font-size:14px;background:var(--chip);border-radius:12px;padding:8px 10px}
+.log small{color:var(--mute);margin-right:6px}
+.busy{position:absolute;inset:0;display:none;place-content:center;color:#fff;font-weight:700;z-index:4;background:rgba(20,14,32,.45)}
+.busy.on{display:grid}
+aside{background:var(--panel);border-radius:22px;border:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{flex:1 0 auto;border:0;background:none;color:var(--mute);font:inherit;font-size:14px;font-weight:700;padding:10px 12px;border-radius:12px;cursor:pointer;min-height:44px}
+.tabs button[aria-selected=true]{background:var(--ink);color:var(--panel)}
+.pane{padding:16px;overflow-y:auto;flex:1;display:none}
+.pane.on{display:block}
+h2{font-size:17px;margin:4px 0 10px;font-weight:900}
+h2 small{font-weight:500;color:var(--mute);font-size:13px;margin-left:6px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;padding:10px 16px;min-height:44px;font:inherit;font-weight:700;cursor:pointer;background:var(--chip);color:var(--ink)}
+.btn.pri{background:var(--acc);color:#fff}
+.btn:focus-visible,.tabs button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--acc2);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.row .btn{flex:1 1 140px}
+.note{font-size:13px;color:var(--mute);margin:6px 0 14px}
+.list{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.list button{border:1px solid var(--line);background:var(--chip);color:var(--ink);font:inherit;font-size:14px;padding:8px 12px;border-radius:12px;cursor:pointer;min-height:40px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list button:hover{border-color:var(--acc)}
+.list button.play{background:var(--acc);color:#fff;border-color:var(--acc)}
+.grp{font-size:13px;font-weight:700;color:var(--acc2);margin:10px 0 6px}
+label.f{display:grid;grid-template-columns:7em minmax(0,1fr) 3.6em;align-items:center;gap:8px;font-size:14px;margin-bottom:10px}
+label.f output{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute);font-size:13px}
+input[type=range]{width:100%;accent-color:var(--acc);height:28px}
+input[type=color]{width:100%;height:40px;border:1px solid var(--line);border-radius:10px;background:none;padding:2px}
+.sw{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:15px;margin-bottom:10px;min-height:44px}
+.sw input{width:22px;height:22px;accent-color:var(--acc)}
+input[type=search]{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);margin-bottom:12px}
+.param{font-size:13px}
+.param label.f{grid-template-columns:minmax(0,9em) minmax(0,1fr) 3.4em;font-size:13px}
+.param label.f span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.param label.f.mod span{color:var(--acc);font-weight:700}
+dl{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:4px 10px;font-size:14px;margin:0 0 14px}
+dt{color:var(--mute)}dd{margin:0;overflow-wrap:anywhere}
+.drop .list button{background:rgba(255,255,255,.14);color:#fff;border-color:rgba(255,255,255,.3)}
+.drop .list button:hover{background:var(--acc);border-color:var(--acc)}
+.credit a{color:var(--acc2)}
+.empty{color:var(--mute);font-size:14px;padding:10px 0}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:var(--panel);padding:10px 18px;border-radius:14px;font-size:14px;max-width:min(92vw,560px);transition:.25s;z-index:10;pointer-events:none}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.toast.err{background:#c2253d;color:#fff}
+.pick{position:absolute;inset:0;z-index:5;background:rgba(20,14,32,.6);display:none;place-content:center;padding:20px}
+.pick.on{display:grid}
+.pick div{background:var(--panel);color:var(--ink);border-radius:18px;padding:18px;max-width:440px;width:100%}
+.pick .list button{white-space:normal;text-align:left;width:100%}
+input[type=file]{display:none}
+@media(max-width:900px){.app{grid-template-columns:minmax(0,1fr);height:auto}.stage{height:62vh;min-height:360px}aside{max-height:none}.pane{max-height:none}}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+</head>
+<body>
+<header><h1>Live2D <b>ビューア</b></h1><span class="sub">モデルのフォルダか zip をドロップして動かす</span></header>
+<div class="app">
+ <section class="stage spot" id="stage" aria-label="舞台">
+  <div class="bgimg" id="bgimg"></div>
+  <div class="drop" id="drop">
+   <svg viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a9a"/><stop offset="1" stop-color="#ff5d73"/></linearGradient></defs>
+    <ellipse cx="60" cy="108" rx="34" ry="6" fill="rgba(0,0,0,.25)"/><path d="M30 104c2-22 12-34 30-34s28 12 30 34z" fill="url(#g)"/>
+    <circle cx="60" cy="48" r="28" fill="#fff4ec"/><path d="M32 46c0-22 14-32 28-32s28 10 28 32c-6-10-16-14-28-14S38 36 32 46z" fill="#3a2c55"/>
+    <ellipse cx="50" cy="52" rx="3.5" ry="5" fill="#3a2c55"/><ellipse cx="70" cy="52" rx="3.5" ry="5" fill="#3a2c55"/>
+    <ellipse cx="44" cy="60" rx="5" ry="3" fill="#ffb3bd" opacity=".8"/><ellipse cx="76" cy="60" rx="5" ry="3" fill="#ffb3bd" opacity=".8"/><path d="M56 63q4 3 8 0" stroke="#3a2c55" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+   <div class="big">ここにモデルをドロップ</div>
+   <p>.model3.json（Cubism 3〜5）または .model.json（Cubism 2）を含むフォルダ・zip</p>
+   <div class="row" style="justify-content:center;margin:0"><button class="btn pri" data-open="dir">フォルダを選ぶ</button><button class="btn" data-open="zip">zip を選ぶ</button></div>
+   <p>または公式サンプルで試す</p>
+   <div class="list samples" style="justify-content:center;margin:0"></div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div class="cap" id="cap"><span></span></div>
+  <div class="hud" id="hud"></div>
+  <button class="pipbtn" id="pipBtn" aria-label="小窓で表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="8" height="7" rx="1" fill="currentColor"/></svg>小窓</button>
+  <div class="busy" id="busy">読み込み中…</div>
+  <div class="pick" id="pick"><div><h2>どのモデルを開きますか？</h2><div class="list" id="pickList"></div><button class="btn" id="pickCancel">やめる</button></div></div>
+ </section>
+ <aside>
+  <div class="tabs" role="tablist" id="tabs">
+   <button role="tab" aria-selected="true" data-t="model">モデル</button>
+   <button role="tab" aria-selected="false" data-t="talk">会話</button>
+   <button role="tab" aria-selected="false" data-t="motion">モーション</button>
+   <button role="tab" aria-selected="false" data-t="param">パラメータ</button>
+   <button role="tab" aria-selected="false" data-t="view">表示</button>
+  </div>
+  <div class="pane on" id="p-model">
+   <h2>読み込み</h2>
+   <div class="row"><button class="btn pri" data-open="dir">フォルダ</button><button class="btn" data-open="zip">zip</button><button class="btn" data-open="files">ファイル複数</button></div>
+   <p class="note">ファイルはブラウザ内だけで読み込み、どこにも送信しません。</p>
+   <h2>公式サンプル <small>Live2D Inc.</small></h2>
+   <div class="list samples"></div>
+   <p class="note credit">サンプルモデルは株式会社Live2Dの著作物で、同社の<a href="https://www.live2d.com/eula/live2d-free-material-license-agreement_jp.html">無償提供マテリアルの使用許諾契約書</a>と<a href="https://www.live2d.com/learn/sample/model-terms/">サンプルデータ利用条件</a>に基づいて同梱しています。<br>This content uses sample data owned and copyrighted by Live2D Inc.</p>
+   <h2>情報</h2><div id="info"><div class="empty">まだモデルがありません。</div></div>
+   <h2>リップシンク <small>音声に合わせて口パク</small></h2>
+   <div class="row"><button class="btn" data-open="audio" id="audioBtn" disabled>音声ファイルを再生</button><button class="btn" id="stopAudio" disabled>停止</button></div>
+   <label class="f"><span>音量</span><input type="range" id="vol" min="0" max="1" step="0.05" value="0.8"><output id="volO">0.80</output></label>
+  </div>
+  <div class="pane" id="p-talk">
+   <h2>読み上げエンジン</h2>
+   <div class="seg" id="engSeg">
+    <label><input type="radio" name="eng" value="ws" checked><b>ブラウザ標準</b><small>端末内蔵の声。即時・追加の通信なし</small></label>
+    <label><input type="radio" name="eng" value="piper"><b>つくよみちゃん</b><small>ニューラル音声（piper-plus）。初回のみ約70MB</small></label>
+   </div>
+   <div id="wsOpts">
+    <label class="f"><span>声</span><select class="sel" id="wsVoice"><option>読み込み中…</option></select><output></output></label>
+    <label class="f"><span>高さ</span><input type="range" id="wsPitch" min="0.5" max="2" step="0.05" value="1.1"><output id="wsPitchO">1.10</output></label>
+   </div>
+   <div id="ppOpts" hidden>
+    <div class="row"><button class="btn" id="ppLoad">音声モデルを準備</button></div>
+    <div class="prog" id="ppProg"><i></i></div>
+    <p class="note" id="ppNote">初回は音声モデル（約40MB）と日本語辞書（約20MB）を取得し、以後はブラウザに保存されます。Wi-Fi での準備がおすすめです。</p>
+    <p class="note credit">音声：<a href="https://tyc.rei-yumesaki.net/material/corpus/">つくよみちゃんコーパス</a>（CV.夢前黎）を学習した <a href="https://huggingface.co/ayousanz/piper-plus-tsukuyomi-chan">piper-plus モデル</a>。利用は同コーパスの規約に従います。つくよみちゃん以外のキャラクターの声として公開・配布する場合は、事前に権利者への相談が必要です。</p>
+   </div>
+   <label class="f"><span>速さ</span><input type="range" id="tRate" min="0.6" max="1.6" step="0.05" value="1"><output id="tRateO">1.00</output></label>
+   <h2>話してもらう</h2>
+   <textarea id="tText" placeholder="ここに入力した文を、キャラが読み上げます">こんにちは！ブラウザの中だけで声を作って話しています。外出先でも通信量はほとんどかかりません。</textarea>
+   <div class="row"><button class="btn pri" id="tSay">話す</button><button class="btn" id="tStop">止める</button></div>
+   <div class="list" id="tQuick"></div>
+   <label class="sw">字幕を表示<input type="checkbox" id="optCap" checked></label>
+   <div class="log" id="tLog"></div>
+  </div>
+  <div class="pane" id="p-motion">
+   <h2>表情 <small id="expN"></small></h2><div class="list" id="exps"><div class="empty">表情はまだありません。</div></div>
+   <h2>モーション <small id="motN"></small></h2><div id="mots"><div class="empty">モーションはまだありません。</div></div>
+   <p class="note">キャラの頭や体をタップすると、当たり判定に応じたモーションが再生されます。</p>
+  </div>
+  <div class="pane" id="p-param">
+   <div class="row"><button class="btn" id="pReset">上書きを全部解除</button></div>
+   <input type="search" id="pq" placeholder="パラメータを検索（例: Angle, Eye）" aria-label="パラメータ検索">
+   <div class="param" id="params"><div class="empty">Cubism 3以降のモデルを読み込むと、ここで各パラメータを直接動かせます。</div></div>
+  </div>
+  <div class="pane" id="p-view">
+   <h2>位置と大きさ</h2>
+   <label class="f"><span>拡大率</span><input type="range" id="zoom" min="0.2" max="4" step="0.01" value="1"><output id="zoomO">1.00</output></label>
+   <label class="f"><span>回転</span><input type="range" id="rot" min="-180" max="180" step="1" value="0"><output id="rotO">0°</output></label>
+   <div class="row"><button class="btn" id="fit">中央に戻す</button><button class="btn" id="flip">左右反転</button></div>
+   <p class="note">舞台をドラッグで移動、ホイールで拡大縮小できます。</p>
+   <h2>動き</h2>
+   <label class="sw">視線がポインタを追う<input type="checkbox" id="optFocus" checked></label>
+   <label class="sw">タップで反応<input type="checkbox" id="optHit" checked></label>
+   <label class="sw">待機モーションを再生<input type="checkbox" id="optIdle" checked></label>
+   <label class="f"><span>再生速度</span><input type="range" id="spd" min="0" max="2" step="0.05" value="1"><output id="spdO">1.00×</output></label>
+   <h2>小窓表示 <small>ピクチャー・イン・ピクチャー</small></h2>
+   <div class="row"><button class="btn pri" id="pipBtn2">小窓で表示</button></div>
+   <label class="f"><span>小窓の画質</span><select id="pipFps" style="font:inherit;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)"><option value="30" selected>30fps（標準）</option><option value="60">60fps（なめらか）</option><option value="15">15fps（省電力）</option></select><output></output></label>
+   <p class="note">ホーム画面や別アプリに移っても、小窓でキャラが動き続けます。小窓の背景は上の背景色になります（透過や画像背景は小窓では単色になります）。小窓の中ではタッチ操作はできません。</p>
+   <h2>背景</h2>
+   <div class="row"><button class="btn" data-bg="color">単色</button><button class="btn" data-bg="checker">透過チェック</button><button class="btn" data-open="img">画像…</button></div>
+   <label class="f"><span>背景色</span><input type="color" id="bgc" value="#2a2140"><output></output></label>
+   <label class="sw">スポットライト<input type="checkbox" id="optSpot" checked></label>
+   <label class="sw">当たり判定を表示<input type="checkbox" id="optHitView"></label>
+  </div>
+ </aside>
+</div>
+<input type="file" id="fDir" webkitdirectory multiple>
+<input type="file" id="fZip" accept=".zip,application/zip">
+<input type="file" id="fFiles" multiple>
+<input type="file" id="fAudio" accept="audio/*">
+<input type="file" id="fImg" accept="image/*">
+<div class="toast" id="toast" role="status"></div>
+<video id="pipv" muted playsinline autoplay></video>
+
+<script src="https://cdn.jsdelivr.net/npm/@hazart-pkg/live2d-core@1.0.1/live2dcubismcore.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/live2dcubismcore@1.0.2/live2d.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display-lipsyncpatch@0.5.0-ls-8/dist/index.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+{
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get(k,d){try{const v=localStorage.getItem('l2dv.'+k);return v===null?d:JSON.parse(v)}catch{return d}},set(k,v){try{localStorage.setItem('l2dv.'+k,JSON.stringify(v))}catch{}}};
+let tt;const toast=(m,err)=>{const t=$('#toast');t.textContent=m;t.className='toast on'+(err?' err':'');clearTimeout(tt);tt=setTimeout(()=>t.className='toast',err?5200:2200)};
+
+addEventListener('unhandledrejection',e=>{const m=String(e.reason&&e.reason.message||e.reason);toast(/Cannot find this file/.test(m)?'モデルが参照するファイルが見つかりません: '+m.split(': ').pop():'エラー: '+m,1)});
+const stage=$('#stage'),cv=$('#cv');
+if(!window.PIXI||!PIXI.live2d){$('#drop').querySelector('.big').textContent='ライブラリを読み込めませんでした';toast('Live2Dライブラリの読み込みに失敗しました。ネットワークを確認してください。',1);throw new Error('Live2D libraries missing')}
+const L2D=PIXI.live2d;
+const app=new PIXI.Application({view:cv,resizeTo:stage,backgroundAlpha:0,antialias:true,autoDensity:true,resolution:Math.min(devicePixelRatio||1,2)});
+let model=null,base=1,flip=1,overrides={},hitG=null,urls=[];
+
+/* ---------- ファイル収集 ---------- */
+const withPath=(f,p)=>{Object.defineProperty(f,'webkitRelativePath',{value:p,configurable:true});return f};
+async function fromZip(file){
+ const zip=await JSZip.loadAsync(file),out=[];
+ await Promise.all(Object.values(zip.files).filter(e=>!e.dir&&!e.name.startsWith('__MACOSX')).map(async e=>{
+  const b=await e.async('blob');out.push(withPath(new File([b],e.name.split('/').pop()),e.name))}));
+ return out;
+}
+function readEntry(entry,path=''){
+ return new Promise(res=>{
+  if(entry.isFile)entry.file(f=>res([withPath(f,path+f.name)]),()=>res([]));
+  else if(entry.isDirectory){const r=entry.createReader(),all=[];
+   const next=()=>r.readEntries(async es=>{if(!es.length){const sub=await Promise.all(all.map(e=>readEntry(e,path+entry.name+'/')));res(sub.flat())}else{all.push(...es);next()}},()=>res([]));next()}
+  else res([]);
+ });
+}
+async function handleFiles(files){
+ files=files.filter(Boolean);if(!files.length)return;
+ const zips=files.filter(f=>/\.zip$/i.test(f.name));
+ if(zips.length){busy(1);try{files=(await Promise.all(zips.map(fromZip))).flat()}catch(e){busy(0);return toast('zip を展開できませんでした: '+e.message,1)}busy(0)}
+ files=files.map(f=>f.webkitRelativePath?f:withPath(f,f.name));
+ const sets=files.filter(f=>/\.model3?\.json$/i.test(f.name));
+ if(!sets.length)return toast('.model3.json / .model.json が見つかりませんでした。モデルのフォルダごと選んでください。',1);
+ if(sets.length===1)return load(sets[0],files);
+ $('#pickList').innerHTML=sets.map((s,i)=>`<button data-i="${i}">${esc(s.webkitRelativePath)}</button>`).join('');
+ $('#pick').classList.add('on');
+ $('#pickList').onclick=e=>{const b=e.target.closest('button');if(!b)return;$('#pick').classList.remove('on');load(sets[+b.dataset.i],files)};
+}
+$('#pickCancel').onclick=()=>$('#pick').classList.remove('on');
+
+/* ---------- 公式サンプル ---------- */
+const SAMPLES=[['Hiyori','桃瀬ひより'],['Haru','ハル'],['Mao','虹色まお'],['Mark','マークくん'],['Rice','ライス'],['Ren','レン'],['Wanko','わんころもち']];
+$$('.samples').forEach(el=>el.innerHTML=SAMPLES.map(([id,n])=>`<button data-s="${id}">${n}</button>`).join(''));
+// サンプルは同梱ファイルを取得して File 化し、通常のフォルダ読み込みと同じ経路で開く（.moc3 は base64 テキストで同梱）
+async function loadSample(id,name){
+ busy(1);
+ try{
+  const base=`samples/${id}/`,get=async p=>{const r=await fetch(base+p);if(!r.ok)throw new Error(p+' を取得できません');return r};
+  const jsonText=await (await get(id+'.model3.json')).text(),j=JSON.parse(jsonText),R=j.FileReferences||{};
+  const paths=new Set([R.Physics,R.Pose,R.UserData,R.DisplayInfo,...(R.Textures||[]),...(R.Expressions||[]).map(x=>x.File)]);
+  for(const g of Object.values(R.Motions||{}))for(const m of g){paths.add(m.File);paths.add(m.Sound)}
+  paths.delete(undefined);paths.delete('');
+  const files=await Promise.all([...paths].map(async p=>withPath(new File([await (await get(p)).blob()],p.split('/').pop()),id+'/'+p)));
+  const b64=await (await get(R.Moc+'.b64.txt')).text(),bin=Uint8Array.from(atob(b64.trim()),c=>c.charCodeAt(0));
+  files.push(withPath(new File([bin],R.Moc.split('/').pop()),id+'/'+R.Moc));
+  const set=withPath(new File([jsonText],id+'.model3.json'),id+'/'+id+'.model3.json');
+  busy(0);await load(set,[set,...files],name);
+ }catch(e){busy(0);toast('サンプルを読み込めませんでした: '+e.message,1)}
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(b)loadSample(b.dataset.s,b.textContent+'（公式サンプル）')});
+
+/* ---------- 読み込み ---------- */
+const busy=on=>$('#busy').classList.toggle('on',!!on);
+let label='';
+async function load(settingsFile,files,name){
+ busy(1);
+ let src=settingsFile,path=settingsFile;
+ if(files){const dir=settingsFile.webkitRelativePath.replace(/[^/]*$/,'');path=settingsFile.webkitRelativePath;
+  src=[settingsFile,...files.filter(f=>f!==settingsFile&&f.webkitRelativePath.startsWith(dir)&&!/\.model3?\.json$/i.test(f.name))]}
+ try{
+  const m=await L2D.Live2DModel.from(src,{autoFocus:$('#optFocus').checked,autoHitTest:$('#optHit').checked});
+  if(model){app.stage.removeChild(model);model.destroy({children:true})}
+  model=m;overrides={};flip=1;label=name||'';
+  model.anchor.set(.5,.5);app.stage.addChild(model);
+  model.internalModel.on('beforeModelUpdate',applyOverrides);
+  model.internalModel.on('beforeModelUpdate',()=>driveMouth());
+  model.on('hit',onHit);
+  if(!$('#optIdle').checked)model.internalModel.motionManager.groups.idle='__none__';
+  fit();buildInfo(path);buildMotions();buildParams();drawHit();
+  $('#drop').classList.add('hide');prepPip();$('#audioBtn').disabled=false;$('#stopAudio').disabled=false;
+  toast('「'+modelName()+'」を読み込みました');
+ }catch(e){console.error(e);toast('読み込みに失敗: '+(e&&e.message||e)+'（Cubism 5.x 以降の新しい moc3 は未対応の場合があります）',1)}
+ busy(0);
+}
+const modelName=()=>{if(label)return label;const u=model.internalModel.settings;return(u.name||u.url||'model').split('/').pop().replace(/\.model3?\.json$/i,'')};
+const isC4=()=>model&&model.internalModel.coreModel&&model.internalModel.coreModel._model;
+
+function fit(){
+ if(!model)return;
+ const W=app.screen.width,H=app.screen.height;
+ model.scale.set(1);model.rotation=0;
+ const w=model.internalModel.width||model.width,h=model.internalModel.height||model.height;
+ base=Math.min(W*.92/w,H*.92/h);
+ model.position.set(W/2,H/2);$('#zoom').value=1;$('#rot').value=0;flip=1;applyXform();
+}
+function applyXform(){
+ if(!model)return;const z=+$('#zoom').value,r=+$('#rot').value;
+ model.scale.set(base*z*flip,base*z);model.rotation=r*Math.PI/180;
+ $('#zoomO').value=z.toFixed(2);$('#rotO').value=r+'°';drawHit();
+}
+
+/* ---------- 情報 ---------- */
+function buildInfo(fp){
+ const im=model.internalModel,s=im.settings,c4=isC4();
+ const core=c4?im.coreModel._model:null;
+ const ver=c4?'Cubism 3 以降（.moc3）':'Cubism 2（.moc）';
+ const rows=[['名前',modelName()],['形式',ver],['ファイル',fp],['キャンバス',Math.round(im.width)+' × '+Math.round(im.height)+' px'],
+  ['テクスチャ',(s.textures||[]).length+' 枚'],['パラメータ',core?core.parameters.count+' 個':'—'],['パーツ',core?core.parts.count+' 個':'—'],
+  ['当たり判定',(im.hitAreas?Object.keys(im.hitAreas).join(', '):'')||'なし'],['物理演算',s.physics||s.physicsJson?'あり':'なし']];
+ $('#info').innerHTML='<dl>'+rows.map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')+'</dl>';
+ hud();
+}
+function hud(extra){
+ if(!model){$('#hud').innerHTML='';return}
+ $('#hud').innerHTML=[modelName(),...(extra?[extra]:[])].map(t=>`<span>${esc(t)}</span>`).join('');
+}
+
+/* ---------- モーション・表情 ---------- */
+function buildMotions(){
+ const mm=model.internalModel.motionManager,defs=mm.definitions||{};
+ const groups=Object.keys(defs);let n=0;
+ $('#mots').innerHTML=groups.length?groups.map(g=>{const ds=defs[g]||[];n+=ds.length;
+  return `<div class="grp">${esc(g||'(無名グループ)')}</div><div class="list">`+ds.map((d,i)=>{const fn=(d.File||d.file||'').split('/').pop().replace(/\.(motion3\.json|mtn)$/i,'');
+   return `<button data-g="${esc(g)}" data-i="${i}" title="${esc(fn)}">${esc(fn||g+' '+(i+1))}</button>`}).join('')+'</div>'}).join(''):'<div class="empty">このモデルにはモーションが定義されていません。</div>';
+ $('#motN').textContent=n?n+' 個':'';
+ const em=mm.expressionManager,ex=em?em.definitions:[];
+ $('#exps').innerHTML=ex&&ex.length?['<button data-x="-1">リセット</button>',...ex.map((d,i)=>`<button data-x="${i}">${esc(d.Name||d.name||'表情 '+(i+1))}</button>`)].join(''):'<div class="empty">このモデルには表情が定義されていません。</div>';
+ $('#expN').textContent=ex&&ex.length?ex.length+' 個':'';
+}
+$('#mots').onclick=async e=>{const b=e.target.closest('button');if(!b||!model)return;
+ $$('#mots button.play').forEach(x=>x.classList.remove('play'));b.classList.add('play');
+ await model.motion(b.dataset.g,+b.dataset.i,3);hud('▶ '+b.textContent)};
+$('#exps').onclick=e=>{const b=e.target.closest('button');if(!b||!model)return;const i=+b.dataset.x;
+ $$('#exps button.play').forEach(x=>x.classList.remove('play'));
+ if(i<0){model.internalModel.motionManager.expressionManager.resetExpression();hud()}else{model.expression(i);b.classList.add('play');hud('表情: '+b.textContent)}};
+function onHit(areas){
+ const mm=model.internalModel.motionManager,groups=Object.keys(mm.definitions||{});
+ for(const a of areas){
+  const al=a.toLowerCase(),cand=groups.find(g=>{const gl=g.toLowerCase();return gl==='tap'+al||gl==='tap_'+al||gl==='flick_'+al||(gl.includes('tap')&&gl.includes(al))})
+   ||groups.find(g=>/tap/i.test(g));
+  hud('タップ: '+a);
+  if(cand){model.motion(cand,undefined,3);return}
+ }
+ const nonIdle=groups.filter(g=>!/idle/i.test(g));if(nonIdle.length)model.motion(nonIdle[Math.random()*nonIdle.length|0],undefined,3);
+}
+
+/* ---------- パラメータ ---------- */
+function buildParams(){
+ if(!isC4()){$('#params').innerHTML='<div class="empty">Cubism 2 モデルではパラメータ編集に対応していません。</div>';return}
+ const p=model.internalModel.coreModel._model.parameters;
+ $('#params').innerHTML=Array.from({length:p.count},(_,i)=>{const st=(p.maximumValues[i]-p.minimumValues[i])/100;
+  return `<label class="f" data-id="${esc(p.ids[i].toLowerCase())}"><span title="${esc(p.ids[i])}">${esc(p.ids[i])}</span><input type="range" data-i="${i}" min="${p.minimumValues[i]}" max="${p.maximumValues[i]}" step="${st}" value="${p.defaultValues[i]}"><output>${p.defaultValues[i].toFixed(2)}</output></label>`}).join('');
+ filterParams();
+}
+function applyOverrides(){if(!isC4())return;const cm=model.internalModel.coreModel;for(const i in overrides)cm.setParameterValueByIndex(+i,overrides[i])}
+$('#params').oninput=e=>{const r=e.target;if(r.type!=='range')return;overrides[r.dataset.i]=+r.value;r.nextElementSibling.value=(+r.value).toFixed(2);r.closest('label').classList.add('mod')};
+$('#params').ondblclick=e=>{const l=e.target.closest('label');if(!l)return;const r=l.querySelector('input');delete overrides[r.dataset.i];l.classList.remove('mod')};
+$('#pReset').onclick=()=>{overrides={};$$('#params label.mod').forEach(l=>l.classList.remove('mod'));toast('パラメータの上書きを解除しました')};
+const filterParams=()=>{const q=$('#pq').value.trim().toLowerCase();$$('#params label').forEach(l=>l.style.display=!q||l.dataset.id.includes(q)?'':'none')};
+$('#pq').oninput=filterParams;
+// 毎フレーム、上書きしていないスライダーに現在値を反映
+app.ticker.add(()=>{if(!isC4()||!$('#p-param').classList.contains('on'))return;const v=model.internalModel.coreModel._model.parameters.values;
+ for(const r of $$('#params input')){if(r.dataset.i in overrides||r.closest('label').style.display==='none'||document.activeElement===r)continue;r.value=v[r.dataset.i];r.nextElementSibling.value=v[r.dataset.i].toFixed(2)}});
+
+/* ---------- 当たり判定表示 ---------- */
+function drawHit(){
+ if(hitG){model&&model.removeChild(hitG);hitG.destroy();hitG=null}
+ if(!model||!$('#optHitView').checked)return;
+ hitG=new PIXI.Graphics();model.addChild(hitG);
+}
+app.ticker.add(()=>{if(!hitG||!model)return;hitG.clear();const im=model.internalModel;
+ for(const name in im.hitAreas||{}){const b=im.getDrawableBounds(im.hitAreas[name].index);
+  hitG.lineStyle(2/Math.abs(model.scale.y),0xff5d73,1).beginFill(0xff5d73,.15).drawRect(b.x,b.y,b.width,b.height).endFill()}});
+
+/* ---------- 操作 ---------- */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{if(!model)return;drag={x:e.clientX,y:e.clientY,mx:model.x,my:model.y,moved:false};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>5)drag.moved=true;if(drag.moved)model.position.set(drag.mx+dx,drag.my+dy)});
+cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
+cv.addEventListener('wheel',e=>{if(!model)return;e.preventDefault();const z=$('#zoom');z.value=Math.min(4,Math.max(.2,+z.value*(e.deltaY<0?1.1:1/1.1)));applyXform()},{passive:false});
+$('#zoom').oninput=$('#rot').oninput=applyXform;
+$('#fit').onclick=fit;$('#flip').onclick=()=>{flip*=-1;applyXform()};
+$('#optFocus').onchange=e=>{if(model)model.autoFocus=e.target.checked};
+$('#optHit').onchange=e=>{if(model)model.autoHitTest=e.target.checked};
+$('#optIdle').onchange=e=>{if(!model)return;const mm=model.internalModel.motionManager;mm.groups.idle=e.target.checked?(model.internalModel.settings.motions&&Object.keys(model.internalModel.settings.motions).find(g=>/idle/i.test(g)))||'Idle':'__none__';if(!e.target.checked)mm.stopAllMotions()};
+$('#spd').oninput=e=>{app.ticker.speed=+e.target.value;$('#spdO').value=(+e.target.value).toFixed(2)+'×'};
+$('#optHitView').onchange=drawHit;
+$('#vol').oninput=e=>$('#volO').value=(+e.target.value).toFixed(2);
+$('#stopAudio').onclick=()=>model&&model.stopSpeaking();
+new ResizeObserver(()=>{if(model&&!model.destroyed){const W=app.screen.width,H=app.screen.height;const w=model.internalModel.width,h=model.internalModel.height;base=Math.min(W*.92/w,H*.92/h);applyXform()}}).observe(stage);
+
+/* ---------- 背景 ---------- */
+function setBg(mode,color){
+ stage.classList.toggle('checker',mode==='checker');
+ if(color){stage.style.setProperty('--sbg',color);$('#bgc').value=color}
+ if(mode!=='img')$('#bgimg').style.backgroundImage='';
+ store.set('bg',{mode:mode==='img'?'color':mode,color:$('#bgc').value});
+}
+$$('[data-bg]').forEach(b=>b.onclick=()=>setBg(b.dataset.bg));
+$('#bgc').oninput=e=>setBg('color',e.target.value);
+$('#optSpot').onchange=e=>{stage.classList.toggle('spot',e.target.checked);store.set('spot',e.target.checked)};
+{const s=store.get('bg',null);if(s)setBg(s.mode,s.color);const sp=store.get('spot',true);$('#optSpot').checked=sp;stage.classList.toggle('spot',sp)}
+
+/* ---------- ファイル入力 ---------- */
+const inputs={dir:'#fDir',zip:'#fZip',files:'#fFiles',audio:'#fAudio',img:'#fImg'};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-open]');if(b)$(inputs[b.dataset.open]).click()});
+$('#fDir').onchange=$('#fZip').onchange=$('#fFiles').onchange=e=>{handleFiles([...e.target.files]);e.target.value=''};
+$('#fAudio').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f||!model)return;const u=URL.createObjectURL(f);urls.push(u);
+ model.speak(u,{volume:+$('#vol').value,onFinish:()=>hud(),onError:er=>toast('音声を再生できませんでした: '+er,1)});hud('🔊 '+f.name)};
+$('#fImg').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;stage.classList.remove('checker');$('#bgimg').style.backgroundImage=`url("${URL.createObjectURL(f)}")`};
+
+/* ---------- ドラッグ&ドロップ ---------- */
+['dragenter','dragover'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();stage.classList.add('over')}));
+['dragleave','drop'].forEach(t=>document.addEventListener(t,e=>{e.preventDefault();if(t==='drop'||!e.relatedTarget)stage.classList.remove('over')}));
+document.addEventListener('drop',async e=>{
+ const items=[...(e.dataTransfer.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+ if(items.length){busy(1);const files=(await Promise.all(items.map(en=>readEntry(en)))).flat();busy(0);handleFiles(files)}
+ else handleFiles([...e.dataTransfer.files]);
+});
+
+/* ---------- 小窓表示（Picture-in-Picture） ---------- */
+// 舞台キャンバスを映像ストリーム化して <video> に流し、その video を小窓にする
+const pv=$('#pipv');let pipStream=null,pipOn=false,worker=null;
+const pipSupported=()=>!!(cv.captureStream&&(document.pictureInPictureEnabled||pv.webkitSupportsPresentationMode&&pv.webkitSupportsPresentationMode('picture-in-picture')));
+function ensureStream(){
+ const fps=+$('#pipFps').value;
+ if(pipStream&&pipStream._fps===fps)return;
+ if(pipStream)pipStream.getTracks().forEach(t=>t.stop());
+ pipStream=cv.captureStream(fps);pipStream._fps=fps;pv.srcObject=pipStream;pv.play().catch(()=>{});
+}
+function setOpaque(on){ // 小窓では透過が黒になるので背景色で塗る
+ const r=app.renderer;r.background.color=$('#bgc').value;r.background.alpha=on?1:0;
+}
+// ページが裏に回ると requestAnimationFrame が止まるため、Worker のタイマーで描画を続ける
+function startBgTicker(){
+ if(worker)return;
+ const src='let t;onmessage=e=>{clearInterval(t);if(e.data)t=setInterval(()=>postMessage(0),e.data)}';
+ worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+ worker.onmessage=()=>{if(document.hidden&&pipOn)app.ticker.update(performance.now())};
+ worker.postMessage(1000/+$('#pipFps').value);
+}
+function stopBgTicker(){if(worker){worker.postMessage(0);worker.terminate();worker=null}}
+async function togglePip(){
+ if(!model)return toast('先にモデルを読み込んでください',1);
+ if(!pipSupported()){let framed=false;try{framed=window.top!==window}catch{framed=true}
+  return toast(framed&&'pictureInPictureEnabled' in document?'埋め込み表示の中なので小窓が使えません。単体で公開した版（GitHub Pages など）で開いてください。':'このブラウザは小窓表示に対応していません。Chrome でページを直接開いてください。',1)}
+ try{
+  if(document.pictureInPictureElement===pv)return await document.exitPictureInPicture();
+  if(pv.webkitPresentationMode==='picture-in-picture')return pv.webkitSetPresentationMode('inline');
+  setOpaque(true);ensureStream();
+  if(pv.requestPictureInPicture&&document.pictureInPictureEnabled){
+   if(pv.readyState<1)await new Promise(r=>pv.addEventListener('loadedmetadata',r,{once:true}));
+   await pv.requestPictureInPicture();
+  }else pv.webkitSetPresentationMode('picture-in-picture');
+ }catch(e){setOpaque(false);toast('小窓を開けませんでした（'+(e.name||'')+'）。アプリ内の表示画面では使えないことがあります。ブラウザでこのページを直接開いて試してください。',1)}
+}
+const onPip=on=>{pipOn=on;stage.classList.toggle('pipping',on);$('#pipBtn2').textContent=on?'小窓を閉じる':'小窓で表示';
+ if(on)startBgTicker();else{stopBgTicker();setOpaque(false)}};
+pv.addEventListener('enterpictureinpicture',()=>onPip(true));
+pv.addEventListener('leavepictureinpicture',()=>onPip(false));
+pv.addEventListener('webkitpresentationmodechanged',()=>onPip(pv.webkitPresentationMode==='picture-in-picture'));
+$('#pipBtn').onclick=$('#pipBtn2').onclick=togglePip;
+$('#pipFps').onchange=()=>{if(pipOn){ensureStream();if(worker)worker.postMessage(1000/+$('#pipFps').value)}};
+$('#bgc').addEventListener('input',()=>{if(pipOn)setOpaque(true)});
+// モデル読み込み後にストリームを準備しておく（タップ直後にすぐ小窓へ移れるように）
+const prepPip=()=>{if(pipSupported()){ensureStream();$('#pipBtn').classList.add('on')}};
+
+/* ---------- 会話（読み上げ＋口パク＋字幕） ---------- */
+const eng=()=>document.querySelector('input[name=eng]:checked').value;
+$('#engSeg').onchange=()=>{$('#wsOpts').hidden=eng()!=='ws';$('#ppOpts').hidden=eng()!=='piper';store.set('eng',eng())};
+{const e=store.get('eng','ws');const r=document.querySelector(`input[name=eng][value=${e}]`);if(r){r.checked=true;$('#engSeg').onchange()}}
+$('#wsPitch').oninput=e=>$('#wsPitchO').value=(+e.target.value).toFixed(2);
+$('#tRate').oninput=e=>$('#tRateO').value=(+e.target.value).toFixed(2);
+const QUICK=['おはよう！今日もよろしくね。','おつかれさま。少し休憩しよう？','えっ、本当に？それはびっくり！','また明日ね。おやすみなさい。'];
+$('#tQuick').innerHTML=QUICK.map(q=>`<button>${esc(q)}</button>`).join('');
+$('#tQuick').onclick=e=>{const b=e.target.closest('button');if(b)say(b.textContent)};
+
+// 字幕
+const cap=t=>{const c=$('#cap');c.querySelector('span').textContent=t||'';c.classList.toggle('on',!!t&&$('#optCap').checked)};
+const logLine=(t,eng)=>{const d=document.createElement('div');d.innerHTML=`<small>${eng==='ws'?'標準':'つくよみ'}</small>`;d.append(t);$('#tLog').prepend(d);while($('#tLog').children.length>8)$('#tLog').lastChild.remove()};
+
+// 口の制御：パラメータIDを Cubism2/3+ 両対応で引く
+const MOUTH={open:['ParamMouthOpenY','PARAM_MOUTH_OPEN_Y'],form:['ParamMouthForm','PARAM_MOUTH_FORM']};
+function setP(ids,v){if(!model)return;const cm=model.internalModel.coreModel;
+ if(isC4()){const a=cm._model.parameters.ids,i=a.indexOf(ids[0]);if(i>=0)cm.setParameterValueByIndex(i,v)}else if(cm.setParamFloat)cm.setParamFloat(ids[1],v)}
+let mouth={mode:'',t0:0,ph:null};
+// i,e は横に広く、u,o はすぼめる
+const FORM={a:.3,i:1,u:-.8,e:.6,o:-.5};
+function driveMouth(){
+ if(!mouth.mode)return;const t=(performance.now()-mouth.t0)/1000;
+ if(mouth.mode==='ws'){ // 音声波形が取れないので、ゆらぎのある開閉で近似
+  const v=Math.max(0,Math.abs(Math.sin(t*11))*.85+Math.sin(t*23)*.15);setP(MOUTH.open,mouth.pause?0:v);
+ }else if(mouth.mode==='piper'&&mouth.ph){ // 開きは音量から自動、形は音素タイミングから
+  const ms=t*1000*mouth.rate,p=mouth.ph.find(x=>ms>=x.start_ms&&ms<x.end_ms);
+  const k=p?String(p.phoneme).toLowerCase()[0]:'';if(k in FORM)setP(MOUTH.form,FORM[k]);
+ }
+}
+
+let talkId=0;
+function stopTalk(){talkId++;try{speechSynthesis.cancel()}catch{}if(model)model.stopSpeaking();mouth.mode='';cap('');if(model)setP(MOUTH.open,0)}
+$('#tStop').onclick=stopTalk;
+$('#tSay').onclick=()=>say($('#tText').value);
+
+async function say(text,{expression,motion,engine}={}){
+ text=String(text||'').trim();if(!text)return;
+ if(!model)return toast('先にモデルを読み込んでください（公式サンプルでも試せます）',1);
+ stopTalk();const id=talkId;
+ if(expression!=null){try{model.expression(expression)}catch{}}
+ if(motion){try{model.motion(motion,undefined,2)}catch{}}
+ const e=engine||eng();logLine(text,e);
+ try{e==='piper'?await sayPiper(text,id):await sayWS(text,id)}catch(err){console.error(err);if(id===talkId)toast('読み上げに失敗: '+(err.message||err),1)}
+ if(id===talkId){mouth.mode='';setTimeout(()=>{if(id===talkId)cap('')},900)}
+}
+
+// --- エンジン1: Web Speech API（端末の音声合成） ---
+let voices=[];
+function listVoices(){
+ if(!('speechSynthesis' in window)){$('#wsVoice').innerHTML='<option>この環境では使えません</option>';return}
+ voices=speechSynthesis.getVoices().filter(v=>/^ja/i.test(v.lang));
+ const saved=store.get('voice','');
+ $('#wsVoice').innerHTML=voices.length?voices.map((v,i)=>`<option value="${i}"${v.name===saved?' selected':''}>${esc(v.name)}${v.localService?'':'（オンライン）'}</option>`).join(''):'<option value="">日本語の声が見つかりません（既定の声を使用）</option>';
+}
+if('speechSynthesis' in window){listVoices();speechSynthesis.onvoiceschanged=listVoices}else listVoices();
+$('#wsVoice').onchange=e=>{const v=voices[e.target.value];if(v)store.set('voice',v.name)};
+function sayWS(text,id){
+ return new Promise((res,rej)=>{
+  if(!('speechSynthesis' in window))return rej(new Error('この環境は端末の音声合成に対応していません。「つくよみちゃん」を使ってください。'));
+  const u=new SpeechSynthesisUtterance(text);u.lang='ja-JP';
+  const v=voices[$('#wsVoice').value];if(v)u.voice=v;
+  u.rate=+$('#tRate').value;u.pitch=+$('#wsPitch').value;
+  // 句読点で一瞬口を閉じる（boundary が来る環境のみ）
+  u.onboundary=ev=>{const ch=text[ev.charIndex-1];if(ch&&/[、。！？!?]/.test(ch)){mouth.pause=true;setTimeout(()=>mouth.pause=false,160)}};
+  u.onstart=()=>{if(id!==talkId)return;mouth={mode:'ws',t0:performance.now()};cap(text)};
+  u.onend=()=>res();u.onerror=ev=>ev.error==='interrupted'||ev.error==='canceled'?res():rej(new Error(ev.error));
+  speechSynthesis.speak(u);
+ });
+}
+
+// --- エンジン2: piper-plus（ブラウザ内ニューラルTTS） ---
+const ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
+let piper=null,piperP=null;
+function initPiper(){
+ if(piper)return Promise.resolve(piper);
+ if(piperP)return piperP;
+ const bar=$('#ppProg'),fill=bar.querySelector('i');bar.classList.add('on');$('#ppLoad').disabled=true;
+ const note=m=>$('#ppNote').textContent=m;
+ piperP=(async()=>{
+  note('ライブラリを読み込み中…');
+  const ort=await import(ORT+'ort.min.mjs');ort.env.wasm.wasmPaths=ORT;
+  const {PiperPlus}=await import('https://cdn.jsdelivr.net/npm/piper-plus@0.6.0/src/index.js');
+  piper=await PiperPlus.initialize({model:'tsukuyomi',ort,onProgress:({progress,message})=>{fill.style.width=Math.round((progress||0)*100)+'%';if(message)note(message)}});
+  fill.style.width='100%';note('準備できました。次回からはすぐ使えます。');$('#ppLoad').textContent='準備済み';
+  return piper;
+ })().catch(e=>{piperP=null;bar.classList.remove('on');$('#ppLoad').disabled=false;
+  let framed=false;try{framed=window.top!==window}catch{framed=true}
+  note(framed?'この表示画面では外部から音声モデルを取得できません。単体公開版（GitHub Pages など）で使ってください。':'準備に失敗しました: '+(e.message||e));throw e});
+ return piperP;
+}
+$('#ppLoad').onclick=()=>initPiper().catch(()=>{});
+function toWav(f32,sr){
+ const n=f32.length,buf=new ArrayBuffer(44+n*2),v=new DataView(buf),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+ v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++){const x=Math.max(-1,Math.min(1,f32[i]));v.setInt16(44+i*2,x<0?x*32768:x*32767,true)}
+ return new Blob([buf],{type:'audio/wav'});
+}
+async function sayPiper(text,id){
+ const tts=await initPiper();if(id!==talkId)return;
+ // 文ごとに合成し、1文目を再生している間に次の文を合成して待ち時間を減らす
+ const parts=text.split(/(?<=[。！？!?\n])/).map(x=>x.trim()).filter(Boolean);
+ const rate=+$('#tRate').value,synth=t=>tts.synthesize(t,{language:'ja',lengthScale:1/rate});
+ let next=synth(parts[0]);
+ for(let i=0;i<parts.length;i++){
+  const r=await next;if(id!==talkId)return;
+  if(i+1<parts.length)next=synth(parts[i+1]);
+  const url=URL.createObjectURL(toWav(r.samples,r.sampleRate));
+  cap(parts[i]);
+  await new Promise(res=>{mouth={mode:'piper',t0:performance.now(),ph:r.hasTimingInfo?r.timing.phonemes:null,rate:1};
+   model.speak(url,{volume:+$('#vol').value,resetExpression:false,onFinish:res,onError:res})});
+  URL.revokeObjectURL(url);
+ }
+}
+
+// エージェントからの指示を受ける口（同じページ内のスクリプト、または親ページからの postMessage）
+window.l2d={say,stop:stopTalk,motion:(g,i)=>model&&model.motion(g,i,3),expression:x=>model&&model.expression(x)};
+addEventListener('message',e=>{const d=e.data;if(d&&d.type==='l2d.say')say(d.text,d)});
+
+/* ---------- タブ ---------- */
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+ $$('#tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));$$('.pane').forEach(p=>p.classList.toggle('on',p.id==='p-'+b.dataset.t))};
+}
+</script>
+</body>
+</html>
