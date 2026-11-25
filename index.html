@@ -47,7 +47,7 @@ header .sub{color:var(--mute);font-size:14px}
 .cap span{display:inline;background:rgba(20,14,32,.78);color:#fff;font-size:clamp(17px,2.2vw,22px);font-weight:700;line-height:1.7;padding:4px 12px;border-radius:10px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 textarea{width:100%;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);resize:vertical;min-height:84px;margin-bottom:10px}
 select.sel{width:100%;font:inherit;font-size:16px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px}
+.seg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin-bottom:12px}
 .seg label{display:block;border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer;background:var(--chip);font-size:14px;line-height:1.35}
 .seg label b{display:block;font-size:15px}
 .seg label small{color:var(--mute)}
@@ -158,10 +158,21 @@ input[type=file]{display:none}
    <div class="seg" id="engSeg">
     <label><input type="radio" name="eng" value="ws" checked><b>ブラウザ標準</b><small>端末内蔵の声。即時・追加の通信なし</small></label>
     <label><input type="radio" name="eng" value="piper"><b>つくよみちゃん</b><small>ニューラル音声（piper-plus）。初回のみ約70MB</small></label>
+    <label><input type="radio" name="eng" value="vv"><b>外部TTS</b><small>VOICEVOX 互換サーバーから音声だけ受信</small></label>
    </div>
    <div id="wsOpts">
     <label class="f"><span>声</span><select class="sel" id="wsVoice"><option>読み込み中…</option></select><output></output></label>
     <label class="f"><span>高さ</span><input type="range" id="wsPitch" min="0.5" max="2" step="0.05" value="1.1"><output id="wsPitchO">1.10</output></label>
+   </div>
+   <div id="vvOpts" hidden>
+    <label class="f" style="grid-template-columns:7em minmax(0,1fr)"><span>接続先URL</span><input type="url" id="vvUrl" placeholder="https://mypc.tailnet.ts.net" style="font:inherit;font-size:16px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%"></label>
+    <div class="row"><button class="btn" id="vvTest">接続して話者を取得</button></div>
+    <label class="f"><span>話者</span><select class="sel" id="vvSpk"><option value="">（未接続）</option></select><output></output></label>
+    <label class="f"><span>音質</span><select class="sel" id="vvSr"><option value="24000">24kHz（標準）</option><option value="16000" selected>16kHz（通信量 2/3）</option><option value="12000">12kHz（通信量 1/2）</option></select><output></output></label>
+    <label class="f"><span>抑揚</span><input type="range" id="vvInt" min="0" max="2" step="0.05" value="1"><output id="vvIntO">1.00</output></label>
+    <p class="note" id="vvNote">VOICEVOX ENGINE（または AivisSpeech Engine など互換サーバー）の URL を入れてください。</p>
+    <p class="note">受信した音声データ：<b id="vvBytes">0 KB</b>（このページを開いてから）</p>
+    <p class="note credit" id="vvCredit"></p>
    </div>
    <div id="ppOpts" hidden>
     <div class="row"><button class="btn" id="ppLoad">音声モデルを準備</button></div>
@@ -496,7 +507,7 @@ const prepPip=()=>{if(pipSupported()){ensureStream();$('#pipBtn').classList.add(
 
 /* ---------- 会話（読み上げ＋口パク＋字幕） ---------- */
 const eng=()=>document.querySelector('input[name=eng]:checked').value;
-$('#engSeg').onchange=()=>{$('#wsOpts').hidden=eng()!=='ws';$('#ppOpts').hidden=eng()!=='piper';store.set('eng',eng())};
+$('#engSeg').onchange=()=>{$('#wsOpts').hidden=eng()!=='ws';$('#ppOpts').hidden=eng()!=='piper';$('#vvOpts').hidden=eng()!=='vv';store.set('eng',eng())};
 {const e=store.get('eng','ws');const r=document.querySelector(`input[name=eng][value=${e}]`);if(r){r.checked=true;$('#engSeg').onchange()}}
 $('#wsPitch').oninput=e=>$('#wsPitchO').value=(+e.target.value).toFixed(2);
 $('#tRate').oninput=e=>$('#tRateO').value=(+e.target.value).toFixed(2);
@@ -506,7 +517,7 @@ $('#tQuick').onclick=e=>{const b=e.target.closest('button');if(b)say(b.textConte
 
 // 字幕
 const cap=t=>{const c=$('#cap');c.querySelector('span').textContent=t||'';c.classList.toggle('on',!!t&&$('#optCap').checked)};
-const logLine=(t,eng)=>{const d=document.createElement('div');d.innerHTML=`<small>${eng==='ws'?'標準':'つくよみ'}</small>`;d.append(t);$('#tLog').prepend(d);while($('#tLog').children.length>8)$('#tLog').lastChild.remove()};
+const logLine=(t,eng)=>{const d=document.createElement('div');d.innerHTML=`<small>${{ws:'標準',piper:'つくよみ',vv:'外部'}[eng]||''}</small>`;d.append(t);$('#tLog').prepend(d);while($('#tLog').children.length>8)$('#tLog').lastChild.remove()};
 
 // 口の制御：パラメータIDを Cubism2/3+ 両対応で引く
 const MOUTH={open:['ParamMouthOpenY','PARAM_MOUTH_OPEN_Y'],form:['ParamMouthForm','PARAM_MOUTH_FORM']};
@@ -537,7 +548,7 @@ async function say(text,{expression,motion,engine}={}){
  if(expression!=null){try{model.expression(expression)}catch{}}
  if(motion){try{model.motion(motion,undefined,2)}catch{}}
  const e=engine||eng();logLine(text,e);
- try{e==='piper'?await sayPiper(text,id):await sayWS(text,id)}catch(err){console.error(err);if(id===talkId)toast('読み上げに失敗: '+(err.message||err),1)}
+ try{e==='piper'?await sayPiper(text,id):e==='vv'?await sayVV(text,id):await sayWS(text,id)}catch(err){console.error(err);if(id===talkId)toast('読み上げに失敗: '+(err.message||err),1)}
  if(id===talkId){mouth.mode='';setTimeout(()=>{if(id===talkId)cap('')},900)}
 }
 
@@ -607,6 +618,66 @@ async function sayPiper(text,id){
   const url=URL.createObjectURL(toWav(r.samples,r.sampleRate));
   cap(parts[i]);
   await new Promise(res=>{mouth={mode:'piper',t0:performance.now(),ph:r.hasTimingInfo?r.timing.phonemes:null,rate:1};
+   model.speak(url,{volume:+$('#vol').value,resetExpression:false,onFinish:res,onError:res})});
+  URL.revokeObjectURL(url);
+ }
+}
+
+// --- エンジン3: 外部TTS（VOICEVOX ENGINE 互換 API） ---
+// 流れ: /audio_query でモーラ（音の単位）と長さを受け取る → /synthesis で WAV を受け取る → 再生しながら母音に合わせて口の形を変える
+let vvBytes=0,vvSpeakers=[];
+const vvBase=()=>($('#vvUrl').value||'').trim().replace(/\/+$/,'');
+$('#vvUrl').value=store.get('vvUrl','');
+$('#vvUrl').onchange=()=>store.set('vvUrl',vvBase());
+$('#vvInt').oninput=e=>$('#vvIntO').value=(+e.target.value).toFixed(2);
+$('#vvSr').value=store.get('vvSr','16000');$('#vvSr').onchange=e=>store.set('vvSr',e.target.value);
+const addBytes=n=>{vvBytes+=n;$('#vvBytes').textContent=vvBytes<1048576?(vvBytes/1024).toFixed(1)+' KB':(vvBytes/1048576).toFixed(2)+' MB'};
+async function vvFetch(path,opt){
+ const base=vvBase();if(!base)throw new Error('接続先URLを入れてください');
+ if(location.protocol==='https:'&&/^http:/.test(base)&&!/^http:\/\/(localhost|127\.0\.0\.1)/.test(base))throw new Error('https のページから http のサーバーには接続できません。Tailscale serve などで https にしてください。');
+ let r;try{r=await fetch(base+path,opt)}catch(e){throw new Error('サーバーに接続できません（URL・起動状態・CORS 設定を確認してください）')}
+ if(!r.ok)throw new Error(`サーバーエラー ${r.status}`);return r;
+}
+function vvCreditUpdate(){const o=$('#vvSpk').selectedOptions[0];$('#vvCredit').textContent=o&&o.dataset.name?`音声：VOICEVOX:${o.dataset.name}（各キャラクターの利用規約に従ってください）`:''}
+$('#vvSpk').onchange=()=>{store.set('vvSpk',$('#vvSpk').value);vvCreditUpdate()};
+async function vvConnect(){
+ const note=m=>$('#vvNote').textContent=m;note('接続中…');
+ try{
+  const r=await vvFetch('/speakers'),txt=await r.text();addBytes(txt.length);vvSpeakers=JSON.parse(txt);
+  const saved=store.get('vvSpk','');
+  $('#vvSpk').innerHTML=vvSpeakers.flatMap(sp=>(sp.styles||[]).map(st=>`<option value="${esc(st.id)}" data-name="${esc(sp.name)}"${String(st.id)===saved?' selected':''}>${esc(sp.name)}（${esc(st.name)}）</option>`)).join('')||'<option value="">話者が見つかりません</option>';
+  vvCreditUpdate();note(`接続できました。話者 ${$('#vvSpk').options.length} スタイル`);
+ }catch(e){note(e.message);throw e}
+}
+$('#vvTest').onclick=()=>vvConnect().catch(()=>{});
+// audio_query のモーラ列から [開始ms, 終了ms, 母音] の列を作る
+function vvTimeline(q){
+ const sp=q.speedScale||1,out=[];let t=(q.prePhonemeLength||0);
+ const push=(len,v)=>{if(len>0)out.push({start_ms:t/sp*1000,end_ms:(t+len)/sp*1000,phoneme:v});t+=len};
+ for(const ph of q.accent_phrases||[]){
+  for(const m of ph.moras||[]){push(m.consonant_length||0,'');push(m.vowel_length||0,(m.vowel||'').toLowerCase())}
+  if(ph.pause_mora)push(ph.pause_mora.vowel_length||0,'');
+ }
+ return out;
+}
+async function vvSynth(text){
+ const spk=$('#vvSpk').value;if(spk==='')throw new Error('先に「接続して話者を取得」を押して話者を選んでください');
+ const qr=await vvFetch(`/audio_query?speaker=${encodeURIComponent(spk)}&text=${encodeURIComponent(text)}`,{method:'POST'});
+ const qt=await qr.text();addBytes(qt.length);const q=JSON.parse(qt);
+ q.speedScale=+$('#tRate').value;q.intonationScale=+$('#vvInt').value;q.outputSamplingRate=+$('#vvSr').value;q.outputStereo=false;
+ const ar=await vvFetch(`/synthesis?speaker=${encodeURIComponent(spk)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(q)});
+ const blob=await ar.blob();addBytes(blob.size);
+ return {blob,ph:vvTimeline(q)};
+}
+async function sayVV(text,id){
+ if(!vvSpeakers.length)await vvConnect();
+ const parts=text.split(/(?<=[。！？!?\n])/).map(x=>x.trim()).filter(Boolean);
+ let next=vvSynth(parts[0]);
+ for(let i=0;i<parts.length;i++){
+  const r=await next;if(id!==talkId)return;
+  if(i+1<parts.length)next=vvSynth(parts[i+1]);
+  const url=URL.createObjectURL(r.blob);cap(parts[i]);
+  await new Promise(res=>{mouth={mode:'piper',t0:performance.now(),ph:r.ph,rate:1};
    model.speak(url,{volume:+$('#vol').value,resetExpression:false,onFinish:res,onError:res})});
   URL.revokeObjectURL(url);
  }

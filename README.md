@@ -19,6 +19,26 @@
 - **ブラウザ標準**: 端末内蔵の音声合成（Web Speech API）。追加の通信なし・即時。音声波形が取れないため口パクは近似です。
 - **つくよみちゃん**: piper-plus によるブラウザ内ニューラル音声合成。初回のみ音声モデル約40MB＋日本語辞書約20MBを取得し、以後はブラウザに保存されます。音量に合わせた口の開閉に加え、音素（あいうえお）に合わせて口の形も変えます。
 
+- **外部TTS**: VOICEVOX ENGINE 互換のサーバー（VOICEVOX / AivisSpeech Engine など）から音声だけを受け取ります。モーラ（音の単位）の長さ情報で母音に合わせた口パクをします。受信量は画面に表示されます。
+
+### 外部TTS（VOICEVOX ENGINE）のつなぎ方
+
+GitHub Pages（https）から使うには、サーバー側も **https** と **CORS 許可** が必要です。自宅PCで動かす例：
+
+1. VOICEVOX ENGINE を CORS 許可付きで起動
+   ```
+   run.exe --cors_policy_mode all
+   ```
+   （許可元を絞るなら `--allow_origin https://particlepudding.github.io`）
+2. Tailscale で https 公開（スマホも同じ tailnet に参加）
+   ```
+   tailscale serve --bg 50021
+   ```
+   表示された `https://<PC名>.<tailnet>.ts.net` を「接続先URL」に入れ、「接続して話者を取得」。
+3. 「音質」を 16kHz / 12kHz にすると受信量を減らせます（WAV のため 16kHz で約32KB/秒の発話）。
+
+音声を使う場合は「VOICEVOX:キャラ名」のクレジット表記と各キャラクターの利用規約に従ってください。
+
 ### 外部から話させる（エージェント連携用）
 
 ```js
