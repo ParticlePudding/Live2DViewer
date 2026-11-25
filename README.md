@@ -39,7 +39,7 @@ iframe.contentWindow.postMessage({ type: "l2d.say", text: "こんにちは", eng
 - Live2D Cubism Core 5.0（Live2D Proprietary Software License）
 - Cubism 2 runtime（live2d.min.js）
 - PixiJS 7.4.2 / pixi-live2d-display-lipsyncpatch 0.5.0-ls-8 / JSZip 3.10.1
-- piper-plus 0.6.0（MIT）/ onnxruntime-web 1.31.1（MIT）
+- piper-plus 0.9.1（MIT）/ onnxruntime-web 1.31.1（MIT）
 - `vendor/piper-plus-wasm/`: piper-plus の日本語G2P WASM（NAIST-JDIC辞書入り・約60MB）。jsDelivr の1ファイル20MB上限を超えるため同梱。ライセンスは同フォルダ内の LICENSE.md / THIRD-PARTY-LICENSES.md を参照
 
 ## サンプルモデルについて

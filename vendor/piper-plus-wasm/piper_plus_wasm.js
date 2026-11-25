@@ -3,8 +3,9 @@
 /**
  * Phonemization result returned to JavaScript.
  *
- * Contains `phoneme_ids` (ready for ONNX inference) and
- * `prosody_features` (flattened `[N*3]` array of A1/A2/A3 values).
+ * Contains `phoneme_ids` (ready for ONNX inference),
+ * `prosody_features` (flattened `[N*3]` array of A1/A2/A3 values) and
+ * `dropped_symbols` (symbols missing from the model's phoneme ID map).
  */
 export class PhonemizeResult {
     static __wrap(ptr) {
@@ -23,6 +24,18 @@ export class PhonemizeResult {
     free() {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_phonemizeresult_free(ptr, 0);
+    }
+    /**
+     * Symbols the model's phoneme ID map lacks, which were left out of
+     * `phonemeIds` (each listed once). Includes whitespace and punctuation
+     * the model does not map; callers decide which ones matter.
+     * @returns {string[]}
+     */
+    get droppedSymbols() {
+        const ret = wasm.phonemizeresult_droppedSymbols(this.__wbg_ptr);
+        var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * Number of phoneme IDs.
@@ -114,6 +127,14 @@ export class WasmPhonemizer {
         return v1;
     }
     /**
+     * Return whether ZH-EN code-switching dispatch is enabled.
+     * @returns {boolean}
+     */
+    isZhEnDispatchEnabled() {
+        const ret = wasm.wasmphonemizer_isZhEnDispatchEnabled(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
      * Create a new phonemizer from a config.json string.
      *
      * The config must contain `phoneme_id_map` and `language_id_map`.
@@ -140,11 +161,10 @@ export class WasmPhonemizer {
     /**
      * Phonemize text and return phoneme IDs + prosody features.
      *
-     * `language` is an optional language code hint (e.g. `"ja"`, `"en"`).
-     * When provided, a warning is logged if auto-detection yields a different
-     * language. Currently auto-detection is always used for the actual
-     * phonemization; the parameter is reserved for future forced-language
-     * support.
+     * `language` is an optional language code (e.g. `"es"`, `"zh"`). When
+     * given, the text is split by script and its Latin parts are read as
+     * that language (Japanese: the whole text goes to OpenJTalk). Without
+     * it, the language of each part is detected from its script.
      *
      * # Errors
      *
@@ -195,6 +215,49 @@ export class WasmPhonemizer {
             throw takeFromExternrefTable0(ret[0]);
         }
     }
+    /**
+     * Load the CMU pronunciation dictionary from JSON bytes.
+     *
+     * This replaces the initial PassthroughPhonemizer for English with the
+     * full `EnglishPhonemizer` (CMU dictionary + g2p_en normalization) that
+     * the Rust, C++ and Swift runtimes use. English segments then read
+     * numbers and words as Python does, instead of character by character;
+     * the browser package needs this for digits and Latin words inside
+     * Chinese text, which this phonemizer splits into an English segment
+     * (Issue #847).
+     *
+     * - `cmudict_json` — JSON bytes in the format of `cmudict_data.json`
+     *   (`{"hello": "HH AH0 L OW1", ...}`), e.g. the copy shipped in
+     *   `@piper-plus/g2p`.
+     *
+     * # Errors
+     *
+     * Returns `CONFIG_PARSE_ERROR` if the dictionary JSON is invalid.
+     * @param {Uint8Array} cmudict_json
+     */
+    setEnglishDictionary(cmudict_json) {
+        const ptr0 = passArray8ToWasm0(cmudict_json, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.wasmphonemizer_setEnglishDictionary(this.__wbg_ptr, ptr0, len0);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Toggle ZH-EN code-switching dispatch (TICKET-04 W2, Issue #384).
+     *
+     * When enabled (default-on with `chinese` feature), English segments
+     * adjacent to Chinese (`[zh, en, *]` / `[en, zh]` / `[zh, en, zh]`)
+     * are phonemized as Mandarin pinyin via the bundled loanword
+     * dictionary instead of the standard English path.
+     *
+     * Pass `false` to opt out and route embedded English through the
+     * regular English phonemizer.
+     * @param {boolean} enabled
+     */
+    setZhEnDispatch(enabled) {
+        wasm.wasmphonemizer_setZhEnDispatch(this.__wbg_ptr, enabled);
+    }
 }
 if (Symbol.dispose) WasmPhonemizer.prototype[Symbol.dispose] = WasmPhonemizer.prototype.free;
 
@@ -221,6 +284,64 @@ export function getApiVersion() {
  */
 export function init_panic_hook() {
     wasm.init_panic_hook();
+}
+
+/**
+ * Detect whether `text` is an SSML document (begins with `<speak`).
+ *
+ * Mirrors `piper_plus_g2p.ssml.is_ssml` (Python),
+ * `piper_plus::ssml::SsmlParser::is_ssml` (Rust),
+ * `SsmlParser.IsSsml` (C#), and `ssml.IsSSML` (Go).
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function isSsml(text) {
+    const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.isSsml(ptr0, len0);
+    return ret !== 0;
+}
+
+/**
+ * Parse SSML text into a JSON-encoded array of segments.
+ *
+ * Each segment is an object with fields `{text, breakMs, rate}`:
+ *   - `text`: text to phonemize (may be empty for silence-only break segments)
+ *   - `breakMs`: trailing silence in milliseconds (0 = none)
+ *   - `rate`: length_scale multiplier from `<prosody rate="...">` (1.0 = unchanged,
+ *             > 1.0 = slower, < 1.0 = faster)
+ *
+ * Returns plain text wrapped as a single segment when the input is not SSML
+ * or fails to parse — same fallback semantics as the other 4 runtimes.
+ *
+ * ```js
+ * const json = parseSsml('<speak>hi<break time="500ms"/>there</speak>');
+ * const segments = JSON.parse(json);
+ * // [{text: "hi", breakMs: 500, rate: 1.0},
+ * //  {text: "there", breakMs: 0, rate: 1.0}]
+ * ```
+ * @param {string} text
+ * @returns {string}
+ */
+export function parseSsml(text) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.parseSsml(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
 }
 
 function __wbg_get_imports() {

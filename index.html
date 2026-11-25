@@ -6,7 +6,7 @@
 <title>Live2D ビューア</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
-<script type="importmap">{"imports":{"@piper-plus/g2p":"https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.4.2/src/index.js"}}</script>
+<script type="importmap">{"imports":{"@piper-plus/g2p":"https://cdn.jsdelivr.net/npm/@piper-plus/g2p@0.5.0/src/index.js"}}</script>
 <style>
 /* VOICE: 手になじむ制作ツール。軽やかで、でも道具として正確に。
    IDEA: アニメ制作スタジオのライトボックス — 光る舞台にキャラが立ち、横に調整卓。
@@ -576,7 +576,7 @@ function initPiper(){
  piperP=(async()=>{
   note('ライブラリを読み込み中…');
   const ort=await import(ORT+'ort.min.mjs');ort.env.wasm.wasmPaths=ORT;
-  const {PiperPlus}=await import('https://cdn.jsdelivr.net/npm/piper-plus@0.6.0/src/index.js');
+  const {PiperPlus}=await import('https://cdn.jsdelivr.net/npm/piper-plus@0.9.1/src/index.js');
   // 日本語辞書入りの WASM（約60MB）は jsDelivr の配信上限を超えるため、このサイトに同梱したものを使う
   piper=await PiperPlus.initialize({model:'tsukuyomi',ort,wasmG2pUrl:new URL('vendor/piper-plus-wasm/piper_plus_wasm.js',location.href).href,onProgress:({progress,message})=>{fill.style.width=Math.round((progress||0)*100)+'%';if(message)note(message)}});
   {const langs=piper._phonemizer&&piper._phonemizer.supportedLanguages;if(langs&&!langs.includes('ja')){piper=null;throw new Error('日本語辞書（WASM）を読み込めませんでした。vendor/piper-plus-wasm が配置されているか確認してください。')}}

@@ -18,7 +18,7 @@ The `piper-plus` package itself is distributed under the
 The compiled OpenJTalk WASM binary (`dist/openjtalk.wasm`) and its JavaScript
 glue (`dist/openjtalk.js`) are included in this package.
 
-```
+```text
 Copyright (c) 2008-2016  Nagoya Institute of Technology
                          Department of Computer Science
 
@@ -73,7 +73,7 @@ holder and text). See section 1 for the full license text.
 MeCab is the morphological analysis engine used by Open JTalk. It is
 statically linked into the OpenJTalk WASM binary.
 
-```
+```text
 Copyright (c) 2009, Nara Institute of Science and Technology, Japan.
 
 All rights reserved.
@@ -117,7 +117,7 @@ The OpenJTalk dictionary files are not included in the npm package. They are
 downloaded at runtime on first use and cached locally in IndexedDB. The
 dictionary is governed by the following license:
 
-```
+```text
 Copyright (c) 2011-2017, The UniDic Consortium
 All rights reserved.
 
@@ -162,10 +162,40 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ONNX Runtime Web is declared as a `peerDependency` and is **not** bundled in
 this package. Users must install it separately (`npm install onnxruntime-web`).
 
-```
+```text
 Copyright (c) Microsoft Corporation
 
 MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## Chinese pinyin dictionaries
+
+`assets/pinyin_single.json` and `assets/pinyin_phrases.json` are derived
+from [pypinyin](https://github.com/mozillazg/python-pinyin) and distributed
+under the MIT License. They are loaded by the Rust WASM Chinese phonemizer.
+
+```text
+Copyright (c) 2016 mozillazg, 闲耘 (hotoo.cn@gmail.com)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -197,3 +227,5 @@ SOFTWARE.
 | MeCab | BSD-3-Clause | Yes (statically linked) | Nara Institute of Science and Technology |
 | NAIST Japanese Dictionary (UniDic) | BSD-3-Clause | No (runtime download) | The UniDic Consortium |
 | ONNX Runtime Web | MIT | No (peerDependency) | Microsoft Corporation |
+
+| Chinese pinyin dictionaries | MIT | Yes (JSON assets) | mozillazg, 闲耘 |
